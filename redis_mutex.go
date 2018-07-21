@@ -1,4 +1,4 @@
-package common
+package redislock
 
 import (
 	"encoding/base64"
