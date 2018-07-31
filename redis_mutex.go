@@ -18,17 +18,17 @@ const (
 var ErrFailed = errors.New("failed to acquire lock")
 
 type RedisLock struct {
-	LockKey       string
 	Expiry        time.Duration
 	Retry         int
 	RetryInterval time.Duration
 
+	lockKey   string
 	lockValue string
 	mutex     sync.Mutex
 }
 
-func NewRedisLock(lockLey string) *RedisLock {
-	return &RedisLock{LockKey: lockLey, Expiry: DefaultExpire, Retry: DefaultRetry, RetryInterval: DefaultInterval}
+func NewRedisLock(lk string) *RedisLock {
+	return &RedisLock{lockKey: lk, Expiry: DefaultExpire, Retry: DefaultRetry, RetryInterval: DefaultInterval}
 }
 
 func (rl *RedisLock) Lock(rds *redis.Client) error {
@@ -48,7 +48,7 @@ func (rl *RedisLock) lock(rds *redis.Client) error {
 	}
 	rl.lockValue = base64.StdEncoding.EncodeToString(b)
 	for i := 0; i < rl.Retry; i++ {
-		ok, err := rds.SetNX(rl.LockKey, rl.lockValue, rl.Expiry).Result()
+		ok, err := rds.SetNX(rl.lockKey, rl.lockValue, rl.Expiry).Result()
 		if err != nil {
 			return err
 		}
@@ -70,6 +70,6 @@ else
 end`
 
 func (rl *RedisLock) UnLock(rds *redis.Client) {
-	rds.Eval(delScript, []string{rl.LockKey}, rl.lockValue).Result()
+	rds.Eval(delScript, []string{rl.lockKey}, rl.lockValue).Result()
 	rl.mutex.Unlock()
 }
