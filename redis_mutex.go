@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	DefaultRetry    = 5
-	DefaultInterval = 100 * time.Millisecond
-	DefaultExpire   = 5 * time.Second
+	DefaultRetry        = 5
+	DefaultInterval     = 100 * time.Millisecond
+	DefaultExpire       = 5 * time.Second
+	DefaultExpireUnsame = 600 * time.Second
 )
 
 var ErrFailed = errors.New("failed to acquire lock")
@@ -24,29 +25,47 @@ type RedisLock struct {
 
 	lockKey   string
 	lockValue string
+	sameLock  bool
 	mutex     sync.Mutex
 }
 
-func NewRedisLock(lk string) *RedisLock {
-	return &RedisLock{lockKey: lk, Expiry: DefaultExpire, Retry: DefaultRetry, RetryInterval: DefaultInterval}
+func NewRedisLock(lk string, sameLock bool) *RedisLock {
+	if sameLock {
+		return &RedisLock{lockKey: lk, Expiry: DefaultExpire, Retry: DefaultRetry, RetryInterval: DefaultInterval}
+	} else {
+		return &RedisLock{lockKey: lk, Expiry: DefaultExpireUnsame, Retry: 1, RetryInterval: 0}
+	}
+}
+
+func NewRedisLockWithParam(lk string, expire time.Duration, retry int, interval time.Duration, sameLock bool) *RedisLock {
+	return &RedisLock{lockKey: lk, Expiry: expire, Retry: retry, RetryInterval: interval}
 }
 
 func (rl *RedisLock) Lock(rds *redis.Client) error {
-	rl.mutex.Lock()
-	err := rl.lock(rds)
-	if err != nil {
-		rl.mutex.Unlock()
+	if rl.sameLock {
+		rl.mutex.Lock()
+		err := rl.lock(rds)
+		if err != nil {
+			rl.mutex.Unlock()
+		}
+		return err
+	} else {
+		err := rl.lock(rds)
+		return err
 	}
-	return err
 }
 
 func (rl *RedisLock) lock(rds *redis.Client) error {
-	b := make([]byte, 16)
-	_, err := rand.Read(b)
-	if err != nil {
-		return err
+	if rl.sameLock {
+		b := make([]byte, 16)
+		_, err := rand.Read(b)
+		if err != nil {
+			return err
+		}
+		rl.lockValue = base64.StdEncoding.EncodeToString(b)
+	} else {
+		rl.lockValue = ""
 	}
-	rl.lockValue = base64.StdEncoding.EncodeToString(b)
 	for i := 0; i < rl.Retry; i++ {
 		ok, err := rds.SetNX(rl.lockKey, rl.lockValue, rl.Expiry).Result()
 		if err != nil {
@@ -69,7 +88,13 @@ else
 	return 0
 end`
 
-func (rl *RedisLock) UnLock(rds *redis.Client) {
-	rds.Eval(delScript, []string{rl.lockKey}, rl.lockValue).Result()
-	rl.mutex.Unlock()
+func (rl *RedisLock) UnLock(rds *redis.Client) error {
+	if rl.sameLock {
+		_, err := rds.Eval(delScript, []string{rl.lockKey}, rl.lockValue).Result()
+		rl.mutex.Unlock()
+		return err
+	} else {
+		_, err := rds.Del(rl.lockKey).Result()
+		return err
+	}
 }
