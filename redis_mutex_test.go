@@ -13,7 +13,7 @@ func TestMutex1(t *testing.T) {
 		Password: "",
 		PoolSize: 10,
 	})
-	lock := NewRedisLock("test1")
+	lock := NewRedisLock("test1", true)
 
 	n := 0
 	w := sync.WaitGroup{}
@@ -45,8 +45,8 @@ func TestMutex2(t *testing.T) {
 		Password: "",
 		PoolSize: 10,
 	})
-	lock1 := NewRedisLock("test2")
-	lock2 := NewRedisLock("test2")
+	lock1 := NewRedisLock("test2", true)
+	lock2 := NewRedisLock("test2", true)
 
 	n := 0
 	w := sync.WaitGroup{}
